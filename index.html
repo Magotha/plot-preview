@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <!--
+    If you are serving your web app in a path other than the root, change the
+    href value below to reflect the base path you are serving from.
+
+    The path provided below has to start and end with a slash "/" in order for
+    it to work correctly.
+
+    For more details:
+    * https://developer.mozilla.org/en-US/docs/Web/HTML/Element/base
+
+    This is a placeholder for base href that will be replaced by the value of
+    the `--base-href` argument provided to `flutter build`.
+  -->
+  <base href="/plot-preview/">
+
+  <meta charset="UTF-8">
+  <meta content="IE=Edge" http-equiv="X-UA-Compatible">
+  <meta name="description" content="Landscape design and property survey">
+
+  <!-- iOS meta tags & icons -->
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black">
+  <meta name="apple-mobile-web-app-title" content="Plot">
+  <link rel="apple-touch-icon" href="icons/Icon-192.png">
+  <meta name="theme-color" content="#F7F7F8" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#0B0B0C" media="(prefers-color-scheme: dark)">
+
+  <!-- Favicon -->
+  <link rel="icon" type="image/png" href="favicon.png"/>
+
+  <title>Plot</title>
+  <link rel="manifest" href="manifest.json">
+  <style>
+    /* The plan handles every touch itself: stop Safari from starting its own
+       pan/zoom/selection gestures, which cancel Apple Pencil strokes. */
+    html, body, flt-glass-pane, flutter-view { touch-action: none; overscroll-behavior: none;
+      -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+  </style>
+</head>
+<body>
+  <!--
+    You can customize the "flutter_bootstrap.js" script.
+    This is useful to provide a custom configuration to the Flutter loader
+    or to give the user feedback during the initialization process.
+
+    For more details:
+    * https://docs.flutter.dev/platform-integration/web/initialization
+  -->
+  <script>
+    // Works without a connection: sw.js keeps the app's files on the device.
+    // `?nosw=1` removes it (to rule it out when something looks stale).
+    (function () {
+      if (!('serviceWorker' in navigator)) return;
+      if (/[?&]nosw=1/.test(location.search)) {
+        navigator.serviceWorker.getRegistrations().then(function (all) {
+          all.forEach(function (r) { r.unregister(); });
+        });
+        return;
+      }
+      function report() {
+        // What this page loaded itself (before the worker controlled it).
+        var urls = performance.getEntriesByType('resource')
+          .map(function (e) { return e.name; })
+          .filter(function (u) { return u.indexOf(location.origin + '/') === 0; });
+        navigator.serviceWorker.ready.then(function (reg) {
+          if (reg.active) reg.active.postMessage({ type: 'cache', urls: urls });
+        });
+      }
+      window.addEventListener('load', function () {
+        navigator.serviceWorker.register('sw.js').catch(function (e) {
+          console.warn('service worker not registered:', e);
+        });
+      });
+      window.addEventListener('flutter-first-frame', function () {
+        setTimeout(report, 1500);
+      });
+    })();
+    // A newer version: build.txt (written after each build) names what is
+    // published; window.plotBuild, what this page is. When they differ the
+    // worker fetches everything again and the projects screen offers to
+    // restart (plotUpdateReady / plotRestart).
+    window.plotBuild = '051d3ba08407';
+    window.plotUpdateReady = false;
+    window.plotRestart = function () { location.reload(); };
+    (function () {
+      if (!('serviceWorker' in navigator) || /[?&]nosw=1/.test(location.search)) return;
+      if (window.plotBuild.indexOf('__') === 0) return; // local run
+      navigator.serviceWorker.addEventListener('message', function (e) {
+        if (e.data && e.data.type === 'refreshed') window.plotUpdateReady = true;
+      });
+      function check() {
+        fetch('build.txt?' + Date.now(), { cache: 'no-store' })
+          .then(function (r) { return r.ok ? r.text() : ''; })
+          .then(function (id) {
+            id = id.trim();
+            if (!id || id === window.plotBuild) return;
+            navigator.serviceWorker.ready.then(function (reg) {
+              if (reg.active) reg.active.postMessage({ type: 'refresh' });
+            });
+          })
+          .catch(function () { /* offline */ });
+      }
+      window.addEventListener('flutter-first-frame', function () {
+        setTimeout(check, 4000);
+      });
+      // Also when the app comes back to the front after a while.
+      var last = Date.now();
+      document.addEventListener('visibilitychange', function () {
+        if (!document.hidden && !window.plotUpdateReady && Date.now() - last > 600000) {
+          last = Date.now();
+          check();
+        }
+      });
+    })();
+    // Whether the app can start without a connection: the worker is
+    // active and the page, the program and a drawing engine are stored on
+    // the device. (Deliberately simple: browsers differ in what they list
+    // as loaded, and a missing icon must not hide the notice.)
+    window.plotOfflineReady = async function () {
+      try {
+        if (!('serviceWorker' in navigator) || !('caches' in window)) return false;
+        var reg = await navigator.serviceWorker.getRegistration();
+        if (!reg || !(reg.active || navigator.serviceWorker.controller)) return false;
+        var cache = await caches.open('plot-app-v1');
+        var paths = (await cache.keys()).map(function (r) {
+          return new URL(r.url).pathname;
+        });
+        var base = location.pathname.replace(/[^/]*$/, '');
+        function has(test) { return paths.some(test); }
+        return has(function (p) { return p === base || p === base + 'index.html'; }) &&
+          has(function (p) { return /\/main\.dart\.js$/.test(p); }) &&
+          has(function (p) { return /\/canvaskit\/.*\.wasm$/.test(p); });
+      } catch (e) {
+        return false;
+      }
+    };
+    // Ask the browser not to evict the projects when the device runs low
+    // on space (granted without a prompt to an installed web app).
+    if (navigator.storage && navigator.storage.persist) {
+      navigator.storage.persist().catch(function () {});
+    }
+  </script>
+  <script src="plot_import.js"></script>
+  <script src="plot_export.js"></script>
+  <script src="flutter_bootstrap.js" async></script>
+</body>
+</html>
